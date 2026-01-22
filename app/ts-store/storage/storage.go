@@ -443,62 +443,63 @@ func handleError(once *sync.Once, err error, errs error) {
 // 		go func(ctx *netstorage.WriteContext, nodeId uint64, ptId uint32) {
 // 			err := s.slaveStorage.WriteRows(ctx, nodeId, ptId, db, rp, time.Second)
 // 			handleError(&once, err, errs)
-// 			// wg.Done()
+// 			wg.Done()
 // 		}(writeCtx, peer.NodeId, peer.PtId)
 // 	}
-// 	// wg.Wait()
+// 	wg.Wait()
 
 // 	return errs
 // }
-func WriteRowsForRep(s *Storage, db, rp string, ptId uint32, shardID uint64, rows []influx.Row, binaryRows []byte) error {
-    db = stringinterner.InternSafe(db)
-    rp = stringinterner.InternSafe(rp)
 
-    // 1. Raft 判定（保持不变，确保不干扰现有流程）
-    t, err := s.metaClient.RaftEnabledForDB(db)
-    if err != nil {
-        return err
-    }
-    if t == metaclient.RAFTFORREPDB {
-        return writeRowsForRaft(s, db, rp, ptId, binaryRows)
-    }
 
-    info := s.MetaClient.GetReplicaInfo(db, ptId)
-    if info == nil {
-        return errno.NewError(errno.RepConfigWriteNoRepDB)
-    }
-
-    // --- 核心修改：测试性能的异步逻辑开始 ---
-
-    // 2. 首先同步写入 Master Shard
-    // 必须同步写 Master，否则如果 Master 失败也返回成功，测试就不准确了
-    masterErr := s.Write(db, rp, rows[0].Name, ptId, shardID, func() error {
-        return s.engine.WriteRows(db, rp, ptId, shardID, rows, binaryRows, nil)
-    })
-
-    if masterErr != nil {
-        return masterErr // Master 写失败必须返回错误
-    }
-
-    // 3. 异步并发写入所有从节点 (Fire-and-forget)
-    for _, peer := range info.Peers {
-        // 关键：创建副本上下文，防止主协程结束后上下文失效
-        writeCtx := &netstorage.WriteContext{Rows: rows, Shard: &meta.ShardInfo{}}
-        writeCtx.Shard.ID = peer.GetSlaveShardID(shardID)
-        
-        nodeID := peer.NodeId
-        peerPtId := peer.PtId
-
-        // 丢入后台协程执行，主协程不再等待其 Done()，也不再 wg.Wait()
-        go func(ctx *netstorage.WriteContext, nId uint64, pId uint32) {
-            // 这里执行网络 IO，即便慢、超时、报错，也不会阻塞主请求
-            _ = s.slaveStorage.WriteRows(ctx, nId, pId, db, rp, 2*time.Second) 
-        }(writeCtx, nodeID, peerPtId)
-    }
-
-    // 4. 直接返回成功，不再等待从节点反馈
-    return nil 
+func WriteRowsForRep(s *Storage, db, rp string, ptId uint32, shardID uint64, rows []influx.Row, binaryRows []byte) error {  
+    db = stringinterner.InternSafe(db)  
+    rp = stringinterner.InternSafe(rp)  
+  
+    t, err := s.metaClient.RaftEnabledForDB(db)  
+    if err != nil {  
+        return err  
+    }  
+    if t == metaclient.RAFTFORREPDB {  
+        return writeRowsForRaft(s, db, rp, ptId, binaryRows)  
+    } else if t == metaclient.NOREPDB {  
+        return errno.NewError(errno.RepConfigWriteNoRepDB)  
+    }  
+  
+    // obtain the number of peers  
+    info := s.MetaClient.GetReplicaInfo(db, ptId)  
+    if info == nil {  
+        // write master only  
+        return errno.NewError(errno.RepConfigWriteNoRepDB)  
+    }  
+  
+    var masterErr error  
+    masterWg := sync.WaitGroup{}  
+      
+    // write master shard synchronously  
+    masterWg.Add(1)  
+    go func() {  
+        defer masterWg.Done()  
+        masterErr = s.Write(db, rp, rows[0].Name, ptId, shardID, func() error {  
+            return s.engine.WriteRows(db, rp, ptId, shardID, rows, binaryRows, nil)  
+        })  
+    }()  
+      
+    // write slave shards asynchronously (no wait)  
+    for _, peer := range info.Peers {  
+        writeCtx := &netstorage.WriteContext{Rows: rows, Shard: &meta.ShardInfo{}}  
+        writeCtx.Shard.ID = peer.GetSlaveShardID(shardID)  
+        go func(ctx *netstorage.WriteContext, nodeId uint64, ptId uint32) {  
+            // 异步写入，不处理错误，不等待  
+            _ = s.slaveStorage.WriteRows(ctx, nodeId, ptId, db, rp, time.Second)  
+        }(writeCtx, peer.NodeId, peer.PtId)  
+    }  
+      
+    // 只等待 master 节点写入完成  
+    masterWg.Wait()  
+    return masterErr  
 }
+
 
 func writeRowsForRaft(s *Storage, db, rp string, ptId uint32, tail []byte) error {
 	return s.engine.WriteToRaft(db, rp, ptId, tail)

@@ -451,55 +451,39 @@ func handleError(once *sync.Once, err error, errs error) {
 // 	return errs
 // }
 
+func WriteRowsForRep(s *Storage, db, rp string, ptId uint32, shardID uint64, rows []influx.Row, binaryRows []byte) error {
+	db = stringinterner.InternSafe(db)
+	rp = stringinterner.InternSafe(rp)
 
-func WriteRowsForRep(s *Storage, db, rp string, ptId uint32, shardID uint64, rows []influx.Row, binaryRows []byte) error {  
-    db = stringinterner.InternSafe(db)  
-    rp = stringinterner.InternSafe(rp)  
-  
-    t, err := s.metaClient.RaftEnabledForDB(db)  
-    if err != nil {  
-        return err  
-    }  
-    if t == metaclient.RAFTFORREPDB {  
-        return writeRowsForRaft(s, db, rp, ptId, binaryRows)  
-    } else if t == metaclient.NOREPDB {  
-        return errno.NewError(errno.RepConfigWriteNoRepDB)  
-    }  
-  
-    // obtain the number of peers  
-    info := s.MetaClient.GetReplicaInfo(db, ptId)  
-    if info == nil {  
-        // write master only  
-        return errno.NewError(errno.RepConfigWriteNoRepDB)  
-    }  
-  
-    var masterErr error  
-    masterWg := sync.WaitGroup{}  
-      
-    // write master shard synchronously  
-    masterWg.Add(1)  
-    go func() {  
-        defer masterWg.Done()  
-        masterErr = s.Write(db, rp, rows[0].Name, ptId, shardID, func() error {  
-            return s.engine.WriteRows(db, rp, ptId, shardID, rows, binaryRows, nil)  
-        })  
-    }()  
-      
-    // write slave shards asynchronously (no wait)  
-    for _, peer := range info.Peers {  
-        writeCtx := &netstorage.WriteContext{Rows: rows, Shard: &meta.ShardInfo{}}  
-        writeCtx.Shard.ID = peer.GetSlaveShardID(shardID)  
-        go func(ctx *netstorage.WriteContext, nodeId uint64, ptId uint32) {  
-            // 异步写入，不处理错误，不等待  
-            _ = s.slaveStorage.WriteRows(ctx, nodeId, ptId, db, rp, time.Second)  
-        }(writeCtx, peer.NodeId, peer.PtId)  
-    }  
-      
-    // 只等待 master 节点写入完成  
-    masterWg.Wait()  
-    return masterErr  
+	t, err := s.metaClient.RaftEnabledForDB(db)
+	if err != nil {
+		return err
+	}
+
+	// 保持原有的 Raft 逻辑判断
+	if t == metaclient.RAFTFORREPDB {
+		return writeRowsForRaft(s, db, rp, ptId, binaryRows)
+	} else if t == metaclient.NOREPDB {
+		return errno.NewError(errno.RepConfigWriteNoRepDB)
+	}
+
+	// 获取副本信息（用于验证该分片/节点是否存在）
+	info := s.MetaClient.GetReplicaInfo(db, ptId)
+	if info == nil {
+		return errno.NewError(errno.RepConfigWriteNoRepDB)
+	}
+
+	// --- 修改部分开始 ---
+
+	// 直接执行 Master 写入逻辑，不再开启 goroutine，不再处理 info.Peers
+	err = s.Write(db, rp, rows[0].Name, ptId, shardID, func() error {
+		return s.engine.WriteRows(db, rp, ptId, shardID, rows, binaryRows, nil)
+	})
+
+	return err
+
+	// --- 修改部分结束 ---
 }
-
 
 func writeRowsForRaft(s *Storage, db, rp string, ptId uint32, tail []byte) error {
 	return s.engine.WriteToRaft(db, rp, ptId, tail)

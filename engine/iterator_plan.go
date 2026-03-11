@@ -461,7 +461,7 @@ func initTransColumnFun() {
 			if recColumn.NilCount > 0 {
 				recColumn.Offset = recColumn.RemoveNilOffset()
 			}
-			column.SetStringValues(recColumn.Val, recColumn.Offset)
+			column.AppendStringBytes(recColumn.Val, recColumn.Offset) 
 		}
 	}
 
@@ -470,7 +470,7 @@ func initTransColumnFun() {
 			if recColumn.NilCount > 0 {
 				recColumn.Offset = recColumn.RemoveNilOffset()
 			}
-			column.SetStringValues(recColumn.Val, recColumn.Offset)
+			column.AppendStringBytes(recColumn.Val, recColumn.Offset) 
 		}
 	}
 }

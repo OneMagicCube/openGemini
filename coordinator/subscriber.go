@@ -32,9 +32,9 @@ import (
 	"go.uber.org/zap"
 )
 
-type Client interface {
-	Send(db, rp string, lineProtocol []byte) error
-	Destination() string
+type Client interface {  
+	Send(db, rp string, lineProtocol []byte, precision string) error  
+	Destination() string  
 }
 
 type HTTPClient struct {
@@ -42,33 +42,36 @@ type HTTPClient struct {
 	url    *url.URL
 }
 
-func (c *HTTPClient) Send(db, rp string, lineProtocol []byte) error {
-	r := bytes.NewReader(lineProtocol)
-	req, err := http.NewRequest("POST", c.url.String()+"/write", r)
-	if err != nil {
-		return err
-	}
-
-	params := req.URL.Query()
-	params.Set("db", db)
-	params.Set("rp", rp)
-	req.URL.RawQuery = params.Encode()
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
-		err = fmt.Errorf("%s", string(body))
-		return err
-	}
-	return nil
+func (c *HTTPClient) Send(db, rp string, lineProtocol []byte, precision string) error {  
+	r := bytes.NewReader(lineProtocol)  
+	req, err := http.NewRequest("POST", c.url.String()+"/write", r)  
+	if err != nil {  
+		return err  
+	}  
+  
+	params := req.URL.Query()  
+	params.Set("db", db)  
+	params.Set("rp", rp)  
+	if precision != "" {  
+		params.Set("precision", precision)  
+	}  
+	req.URL.RawQuery = params.Encode()  
+  
+	resp, err := c.client.Do(req)  
+	if err != nil {  
+		return err  
+	}  
+	defer resp.Body.Close()  
+  
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {  
+		body, err := io.ReadAll(resp.Body)  
+		if err != nil {  
+			return err  
+		}  
+		err = fmt.Errorf("%s", string(body))  
+		return err  
+	}  
+	return nil  
 }
 
 func (c *HTTPClient) Destination() string {
@@ -100,9 +103,10 @@ func NewHTTPSClient(url *url.URL, timeout time.Duration, skipVerify bool, certs 
 	return &HTTPClient{client: c, url: url}, nil
 }
 
-type WriteRequest struct {
-	Client       int
-	LineProtocol []byte
+type WriteRequest struct {  
+	Client       int  
+	LineProtocol []byte  
+	Precision    string  
 }
 
 type BaseWriter struct {
@@ -127,14 +131,14 @@ func (w *BaseWriter) Send(wr *WriteRequest) {
 	}
 }
 
-func (w *BaseWriter) Run() {
-	for wr := range w.ch {
-		err := w.clients[wr.Client].Send(w.db, w.rp, wr.LineProtocol)
-		if err != nil {
-			w.logger.Error("failed to forward write request", zap.String("dest", w.clients[wr.Client].Destination()),
-				zap.String("db", w.db), zap.String("rp", w.rp), zap.Error(err))
-		}
-	}
+func (w *BaseWriter) Run() {  
+	for wr := range w.ch {  
+		err := w.clients[wr.Client].Send(w.db, w.rp, wr.LineProtocol, wr.Precision)  
+		if err != nil {  
+			w.logger.Error("failed to forward write request", zap.String("dest", w.clients[wr.Client].Destination()),  
+				zap.String("db", w.db), zap.String("rp", w.rp), zap.Error(err))  
+		}  
+	}  
 }
 
 func (w *BaseWriter) Name() string {
@@ -156,27 +160,28 @@ func (w *BaseWriter) Stop() {
 	close(w.ch)
 }
 
-type SubscriberWriter interface {
-	Write(lineProtocol []byte)
-	Name() string
-	Run()
-	Start(concurrency, buffersize int)
-	Stop()
-	Clients() []Client
+type SubscriberWriter interface {  
+	Write(lineProtocol []byte, precision string)  
+	Name() string  
+	Run()  
+	Start(concurrency, buffersize int)  
+	Stop()  
+	Clients() []Client  
 }
 
 type AllWriter struct {
 	BaseWriter
 }
 
-func (w *AllWriter) Write(lineProtocol []byte) {
-	for i := 0; i < len(w.clients); i++ {
-		wr := &WriteRequest{}
-		wr.Client = i
-		wr.LineProtocol = make([]byte, len(lineProtocol))
-		copy(wr.LineProtocol, lineProtocol)
-		w.Send(wr)
-	}
+func (w *AllWriter) Write(lineProtocol []byte, precision string) {  
+	for i := 0; i < len(w.clients); i++ {  
+		wr := &WriteRequest{}  
+		wr.Client = i  
+		wr.Precision = precision  
+		wr.LineProtocol = make([]byte, len(lineProtocol))  
+		copy(wr.LineProtocol, lineProtocol)  
+		w.Send(wr)  
+	}  
 }
 
 type RoundRobinWriter struct {
@@ -184,10 +189,10 @@ type RoundRobinWriter struct {
 	i int32
 }
 
-func (w *RoundRobinWriter) Write(lineProtocol []byte) {
-	i := atomic.AddInt32(&w.i, 1) % int32(len(w.clients))
-	wr := &WriteRequest{Client: int(i), LineProtocol: lineProtocol}
-	w.Send(wr)
+func (w *RoundRobinWriter) Write(lineProtocol []byte, precision string) {  
+	i := atomic.AddInt32(&w.i, 1) % int32(len(w.clients))  
+	wr := &WriteRequest{Client: int(i), LineProtocol: lineProtocol, Precision: precision}  
+	w.Send(wr)  
 }
 
 type MetaClient interface {
@@ -332,29 +337,29 @@ func (s *SubscriberManager) UpdateWriters() {
 	})
 }
 
-func (s *SubscriberManager) Send(db, rp string, lineProtocol []byte) {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-
-	// no subscriber writers
-	if len(s.writers) == 0 {
-		return
-	}
-
-	if rp == "" {
-		dbi, err := s.client.Database(db)
-		if err != nil {
-			s.Logger.Error("unknown database", zap.String("db", db))
-		} else {
-			rp = dbi.DefaultRetentionPolicy
-		}
-	}
-
-	if writer, ok := s.writers[db][rp]; ok {
-		for _, w := range writer {
-			w.Write(lineProtocol)
-		}
-	}
+func (s *SubscriberManager) Send(db, rp string, lineProtocol []byte, precision string) {  
+	s.lock.RLock()  
+	defer s.lock.RUnlock()  
+  
+	// no subscriber writers  
+	if len(s.writers) == 0 {  
+		return  
+	}  
+  
+	if rp == "" {  
+		dbi, err := s.client.Database(db)  
+		if err != nil {  
+			s.Logger.Error("unknown database", zap.String("db", db))  
+		} else {  
+			rp = dbi.DefaultRetentionPolicy  
+		}  
+	}  
+  
+	if writer, ok := s.writers[db][rp]; ok {  
+		for _, w := range writer {  
+			w.Write(lineProtocol, precision)  
+		}  
+	}  
 }
 
 func (s *SubscriberManager) StopAllWriters() {

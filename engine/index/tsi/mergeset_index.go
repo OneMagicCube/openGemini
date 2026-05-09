@@ -967,7 +967,7 @@ func (idx *MergeSetIndex) SearchSeries(series [][]byte, name []byte, condition i
 	var isExpectSeries []bool
 	sIndex := 0
 	for i := range tsids {
-		combineKeys, _, isExpectSeries, combineSeriesKey, err = idx.searchSeriesWithTagArray(tsids[i], combineKeys, nil, combineSeriesKey, isExpectSeries, condition, false)
+		combineKeys, _, isExpectSeries, combineSeriesKey, err = idx.SearchSeriesWithTagArray(tsids[i], combineKeys, nil, combineSeriesKey, isExpectSeries, condition, false)
 		if err != nil {
 			idx.logger.Error("searchSeriesKey fail", zap.Error(err), zap.String("index", "mergeset"))
 			return nil, err
@@ -1001,7 +1001,7 @@ func (idx *MergeSetIndex) GetSeries(sid uint64, buf []byte, condition influxql.E
 	var isExpectSeries []bool
 	var err error
 
-	combineKeys, _, isExpectSeries, _, err = idx.searchSeriesWithTagArray(sid, combineKeys, nil, combineSeriesKey, isExpectSeries, condition, true)
+	combineKeys, _, isExpectSeries, _, err = idx.SearchSeriesWithTagArray(sid, combineKeys, nil, combineSeriesKey, isExpectSeries, condition, true)
 	if err != nil {
 		idx.logger.Error("failed to get series", zap.Error(err), zap.Uint64("sid", sid))
 		return err
@@ -1026,7 +1026,7 @@ func (idx *MergeSetIndex) GetSeriesBytes(sid uint64, buf []byte, condition influ
 	var err error
 
 	seriesBytes := &influx.SeriesBytes{}
-	combineKeys, _, isExpectSeries, _, err = idx.searchSeriesWithTagArray(sid, combineKeys, nil, combineSeriesKey, isExpectSeries, condition, true)
+	combineKeys, _, isExpectSeries, _, err = idx.SearchSeriesWithTagArray(sid, combineKeys, nil, combineSeriesKey, isExpectSeries, condition, true)
 	if err != nil {
 		idx.logger.Error("failed to get series", zap.Error(err), zap.Uint64("sid", sid))
 		return err
@@ -1134,7 +1134,7 @@ LOOP:
 			return nil, nil, totalSeriesKeyLen, seriesN, errno.NewError(errno.QueryAborted)
 		}
 
-		seriesKeys, exprs, isExpectSeries, combineSeriesKey, err = idx.searchSeriesWithTagArray(se.SeriesID, seriesKeys, exprs, combineSeriesKey, isExpectSeries, opt.Condition, false)
+		seriesKeys, exprs, isExpectSeries, combineSeriesKey, err = idx.SearchSeriesWithTagArray(se.SeriesID, seriesKeys, exprs, combineSeriesKey, isExpectSeries, opt.Condition, false)
 		if err != nil {
 			if errno.Equal(err, errno.ErrSearchSeriesKey) {
 				continue
@@ -1245,7 +1245,7 @@ LOOP:
 			return nil, nil, totalSeriesKeyLen, seriesN, errno.NewError(errno.QueryAborted)
 		}
 
-		seriesKeys, exprs, isExpectSeries, combineSeriesKey, err = idx.searchSeriesWithTagArray(se.SeriesID, seriesKeys, exprs, combineSeriesKey, isExpectSeries, opt.Condition, false)
+		seriesKeys, exprs, isExpectSeries, combineSeriesKey, err = idx.SearchSeriesWithTagArray(se.SeriesID, seriesKeys, exprs, combineSeriesKey, isExpectSeries, opt.Condition, false)
 		if err != nil {
 			if errno.Equal(err, errno.ErrSearchSeriesKey) {
 				continue

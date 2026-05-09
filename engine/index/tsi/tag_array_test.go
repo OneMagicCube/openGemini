@@ -594,7 +594,7 @@ func TestSeriesByExprIterator_TagArray(t *testing.T) {
 		var combineSeriesKey []byte
 		var isExpectSeries []bool
 		for _, id := range ids {
-			seriesKeys, _, isExpectSeries, _, err := index.searchSeriesWithTagArray(id, seriesKeys, nil, combineSeriesKey, isExpectSeries, opt.Condition, false)
+			seriesKeys, _, isExpectSeries, _, err := index.SearchSeriesWithTagArray(id, seriesKeys, nil, combineSeriesKey, isExpectSeries, opt.Condition, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1311,7 +1311,7 @@ func searchSeriesWithTagArray1(idx *MergeSetIndex, series [][]byte, name []byte,
 	var isExpectSeries []bool
 	var index int
 	for i := range tsids {
-		combineKeys, _, isExpectSeries, _, err := idx.searchSeriesWithTagArray(tsids[i], combineKeys, nil, combineSeriesKey, isExpectSeries, condition, false)
+		combineKeys, _, isExpectSeries, _, err := idx.SearchSeriesWithTagArray(tsids[i], combineKeys, nil, combineSeriesKey, isExpectSeries, condition, false)
 		if err != nil {
 			return nil, err
 		}
@@ -1357,7 +1357,7 @@ func searchSeriesWithTagArray2(idx *MergeSetIndex, series [][]byte, name []byte,
 	var combineKeys [][]byte
 	var isExpectSeries []bool
 	for i := range tsids {
-		combineKeys, _, isExpectSeries, _, err := idx.searchSeriesWithTagArray(tsids[i], combineKeys, nil, combineSeriesKey, isExpectSeries, condition, false)
+		combineKeys, _, isExpectSeries, _, err := idx.SearchSeriesWithTagArray(tsids[i], combineKeys, nil, combineSeriesKey, isExpectSeries, condition, false)
 		if err != nil {
 			return nil, err
 		}
@@ -1417,7 +1417,7 @@ func TestSearchSeries_With_TagArray_By_MultiTagAnd(t *testing.T) {
 		var combineSeriesKey []byte
 		var isExpectSeries []bool
 		for _, id := range ids {
-			seriesKeys, _, isExpectSeries, _, err := index.searchSeriesWithTagArray(id, seriesKeys, nil, combineSeriesKey, isExpectSeries, opt.Condition, false)
+			seriesKeys, _, isExpectSeries, _, err := index.SearchSeriesWithTagArray(id, seriesKeys, nil, combineSeriesKey, isExpectSeries, opt.Condition, false)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -1,0 +1,14 @@
+[Unit]
+Description=openGemini Store Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/$install_path/usr/bin/ts-store -config /$install_path/etc/opengemini.conf -pidfile /$install_path/store.pid
+Restart=always
+RestartSec=5
+User=root
+LimitNOFILE=100000
+
+[Install]
+WantedBy=multi-user.target
